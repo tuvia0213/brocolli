@@ -9,8 +9,11 @@ class ProbPool(nn.Module):
 
     def forward(self, feat_map, logit_map):
         prob_map = torch.sigmoid(logit_map)
-        weight_map = prob_map / prob_map.sum(dim=2, keepdim=True).sum(dim=3, keepdim=True)
-        feat = (feat_map * weight_map).sum(dim=2, keepdim=True).sum(dim=3, keepdim=True)
+        weight_map = prob_map / prob_map.sum(dim=2, keepdim=True)\
+            .sum(dim=3, keepdim=True)
+        feat = (feat_map * weight_map).sum(dim=2, keepdim=True)\
+            .sum(dim=3, keepdim=True)
+
         return feat
 
 
@@ -38,6 +41,7 @@ class LogSumExpPool(nn.Module):
         area = 1.0 / (H * W)
         g = self.gamma
 
+        # TODO: split dim=(-1, -2) for onnx.export
         return m + 1 / g * torch.log(area * torch.sum(torch.exp(g * value0),
                                      dim=(-1, -2), keepdim=True))
 
@@ -61,6 +65,7 @@ class ExpPool(nn.Module):
             feat_map, dim=-1, keepdim=True)[0].max(dim=-2, keepdim=True)
 
         # caculate the sum of exp(xi)
+        # TODO: split dim=(-1, -2) for onnx.export
         sum_exp = torch.sum(torch.exp(feat_map - m),
                             dim=(-1, -2), keepdim=True)
 
@@ -71,6 +76,7 @@ class ExpPool(nn.Module):
         exp_weight = torch.exp(feat_map - m) / sum_exp
         weighted_value = feat_map * exp_weight
 
+        # TODO: split dim=(-1, -2) for onnx.export
         return torch.sum(weighted_value, dim=(-1, -2), keepdim=True)
 
 
@@ -90,6 +96,7 @@ class LinearPool(nn.Module):
 
         # sum feat_map's last two dimention into a scalar
         # so the shape of sum_input is (N,C,1,1)
+        # TODO: split dim=(-1, -2) for onnx.export
         sum_input = torch.sum(feat_map, dim=(-1, -2), keepdim=True)
 
         # prevent from dividing by zero
@@ -99,6 +106,7 @@ class LinearPool(nn.Module):
         linear_weight = feat_map / sum_input
         weighted_value = feat_map * linear_weight
 
+        # TODO: split dim=(-1, -2) for onnx.export
         return torch.sum(weighted_value, dim=(-1, -2), keepdim=True)
 
 
@@ -117,13 +125,13 @@ class GlobalPool(nn.Module):
     def cuda(self, device=None):
         return self._apply(lambda t: t.cuda(device))
 
-    def forward(self, feat_map, classifier=None):
+    def forward(self, feat_map, logit_map):
         if self.cfg.global_pool == 'AVG':
             return self.avgpool(feat_map)
         elif self.cfg.global_pool == 'MAX':
             return self.maxpool(feat_map)
         elif self.cfg.global_pool == 'PROB':
-            return self.probpool(feat_map, classifier)
+            return self.probpool(feat_map, logit_map)
         elif self.cfg.global_pool == 'EXP':
             return self.exp_pool(feat_map)
         elif self.cfg.global_pool == 'LINEAR':

@@ -1,7 +1,7 @@
 {
     "train_csv": "/nas/csv/train.csv",
     "dev_csv": "/nas/csv/dev.csv",
-    "backbone": "resnet34",
+    "backbone": "resnet34fpn5",
     "width": 256,
     "height": 256,
     "long_side": 256,

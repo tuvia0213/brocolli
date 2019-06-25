@@ -2,6 +2,23 @@ import torch
 from torch import nn
 from torch.nn import functional as F
 
+from model.utils import get_norm
+
+
+class Conv2dNormRelu(nn.Module):
+
+    def __init__(self, in_ch, out_ch, kernel_size=3, stride=1, padding=0,
+                 bias=True, norm_type='Unknown'):
+        super(Conv2dNormRelu, self).__init__()
+
+        self.conv = nn.Sequential(
+            nn.Conv2d(in_ch, out_ch, kernel_size, stride, padding, bias=bias),
+            get_norm(norm_type, out_ch),
+            nn.ReLU(inplace=True))
+
+    def forward(self, x):
+        return self.conv(x)
+
 
 class CAModule(nn.Module):
     """
@@ -80,6 +97,69 @@ class SAModule(nn.Module):
         return feat_map
 
 
+class FPAModule(nn.Module):
+    """
+    Re-implementation of feature pyramid attention (FPA) described in:
+    *Li et al., Pyramid Attention Network for Semantic segmentation, Face++2018
+    """
+
+    def __init__(self, num_channels, norm_type):
+        super(FPAModule, self).__init__()
+
+        # global pooling branch
+        self.gap_branch = nn.Sequential(
+            nn.AdaptiveAvgPool2d(1),
+            Conv2dNormRelu(num_channels, num_channels, kernel_size=1,
+                           norm_type=norm_type))
+
+        # middle branch
+        self.mid_branch = Conv2dNormRelu(num_channels, num_channels,
+                                         kernel_size=1, norm_type=norm_type)
+
+        self.downsample1 = Conv2dNormRelu(num_channels, 1, kernel_size=7,
+                                          stride=2, padding=3,
+                                          norm_type=norm_type)
+
+        self.downsample2 = Conv2dNormRelu(1, 1, kernel_size=5, stride=2,
+                                          padding=2, norm_type=norm_type)
+
+        self.downsample3 = Conv2dNormRelu(1, 1, kernel_size=3, stride=2,
+                                          padding=1, norm_type=norm_type)
+
+        self.scale1 = Conv2dNormRelu(1, 1, kernel_size=7, padding=3,
+                                     norm_type=norm_type)
+        self.scale2 = Conv2dNormRelu(1, 1, kernel_size=5, padding=2,
+                                     norm_type=norm_type)
+        self.scale3 = Conv2dNormRelu(1, 1, kernel_size=3, padding=1,
+                                     norm_type=norm_type)
+
+    def forward(self, feat_map):
+        height, width = feat_map.size(2), feat_map.size(3)
+        gap_branch = self.gap_branch(feat_map)
+        gap_branch = nn.Upsample(size=(height, width), mode='bilinear',
+                                 align_corners=False)(gap_branch)
+
+        mid_branch = self.mid_branch(feat_map)
+
+        scale1 = self.downsample1(feat_map)
+        scale2 = self.downsample2(scale1)
+        scale3 = self.downsample3(scale2)
+
+        scale3 = self.scale3(scale3)
+        scale3 = nn.Upsample(size=(height//4, width//4), mode='bilinear',
+                             align_corners=False)(scale3)
+        scale2 = self.scale2(scale2) + scale3
+        scale2 = nn.Upsample(size=(height//2, width//2), mode='bilinear',
+                             align_corners=False)(scale2)
+        scale1 = self.scale1(scale1) + scale2
+        scale1 = nn.Upsample(size=(height, width), mode='bilinear',
+                             align_corners=False)(scale1)
+
+        feat_map = torch.mul(scale1, mid_branch) + gap_branch
+
+        return feat_map
+
+
 class AttentionMap(nn.Module):
 
     def __init__(self, cfg, num_channels):
@@ -87,6 +167,7 @@ class AttentionMap(nn.Module):
         self.cfg = cfg
         self.channel_attention = CAModule(num_channels)
         self.spatial_attention = SAModule(num_channels)
+        self.pyramid_attention = FPAModule(num_channels, cfg.norm_type)
 
     def cuda(self, device=None):
         return self._apply(lambda t: t.cuda(device))
@@ -96,6 +177,8 @@ class AttentionMap(nn.Module):
             return self.channel_attention(feat_map)
         elif self.cfg.attention_map == "SAM":
             return self.spatial_attention(feat_map)
+        elif self.cfg.attention_map == "FPA":
+            return self.pyramid_attention(feat_map)
         elif self.cfg.attention_map == "None":
             return feat_map
         else:

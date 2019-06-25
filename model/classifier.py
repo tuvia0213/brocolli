@@ -70,7 +70,8 @@ class Classifier(nn.Module):
         self.backbone = BACKBONES[cfg.backbone](cfg)
         self.global_pool = GlobalPool(cfg)
         self._init_classifier()
-        self._init_attention_map()
+        self.conv = nn.Conv2d(512, 1, 1, stride=1)
+        # self._init_attention_map()
 
     def _init_classifier(self):
         for index, num_class in enumerate(self.cfg.num_classes):
@@ -116,20 +117,35 @@ class Classifier(nn.Module):
     def cuda(self, device=None):
         return self._apply(lambda t: t.cuda(device))
 
-    def forward(self, x):
+    def logit_map(self, feat_map, classifier):
+        # feat_map = (N, C, H, W)
+        N, C, H, W = feat_map.shape
+        # feat_map_ = (N, H, W, C)
+        feat_map_ = feat_map.permute(0, 2, 3, 1)
+        # logit_map = (N, C, H, W)
+        logit_map = classifier(feat_map_).permute(0, 3, 1, 2)
+
+        return logit_map
+
+    def forward(self, x, return_logit_map=False):
         feat_map = self.backbone(x)
-        if self.cfg.attention_map != "None":
-            feat_map = self.attention_map(feat_map)
+        # if self.cfg.attention_map != "None":
+        #    feat_map = self.attention_map(feat_map)
+
         outs = list()
+        logit_maps = list()
         for index, num_class in enumerate(self.cfg.num_classes):
             classifier = getattr(self, "fc_" + str(index))
-            feat_map_ = feat_map.permute(0, 2, 3, 1)
-            # logit_map = (N, C, H, W)
-            logit_map = classifier(feat_map_).permute(0, 3, 1, 2)
-
+            # logit_map = self.logit_map(feat_map, classifier)
+            logit_map = self.conv(feat_map)
             feat = self.global_pool(feat_map, logit_map)
-            feat = F.dropout(feat, p=self.cfg.fc_drop, training=self.training)
             feat = feat.view(feat.size(0), -1)
+            # in fact, out is the logit with the pooled feat
             out = classifier(feat)
             outs.append(out)
-        return outs
+            logit_maps.append(logit_map)
+
+        if return_logit_map:
+            return (outs, logit_maps)
+        else:
+            return outs

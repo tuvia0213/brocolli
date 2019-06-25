@@ -13,6 +13,7 @@ sys.path.append('/home/desmond/Github/caffe/python')
 sys.path.append('/home/desmond/Github/caffe/python/caffe')
 sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/../')
 
+import caffe
 from model.classifier import Classifier  # noqa
 from converter.pytorch.pytorch_parser import PytorchParser  # noqa
 
@@ -29,9 +30,7 @@ args = parser.parse_args()
 with open(args.cfg_path) as f:
     cfg = edict(json.load(f))
 
-net = Classifier(cfg)
-
-torch.save(net, model_file)
+net = torch.load("pytorch_model/best.pth")
 
 hook_result = []
 
@@ -46,16 +45,15 @@ dummy_input = torch.ones([1, 3, cfg.long_side, cfg.long_side])
 
 net.to(device)
 output = net(dummy_input)
-
+print(output)
+input()
 # print(hook_result)
 
 summary(net, (3, cfg.long_side, cfg.long_side), device='cpu')
 
-pytorch_parser = PytorchParser(model_file, [3, 300, 300])
+pytorch_parser = PytorchParser(model_file, [3, cfg.long_side, cfg.long_side])
 #
 pytorch_parser.run(model_file)
-
-input()
 
 Model_FILE = model_file + '.prototxt'
 

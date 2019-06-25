@@ -14,15 +14,15 @@ model_urls = {
 }
 
 
-def conv3x3(in_planes, out_planes, stride=1):
+def conv3x3(in_planes, out_planes, stride=1, bias=False):
     """3x3 convolution with padding"""
     return nn.Conv2d(in_planes, out_planes, kernel_size=3, stride=stride,
-                     padding=1, bias=False)
+                     padding=1, bias=bias)
 
 
-def conv1x1(in_planes, out_planes, stride=1):
+def conv1x1(in_planes, out_planes, stride=1, bias=False):
     """1x1 convolution"""
-    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=False)  # noqa
+    return nn.Conv2d(in_planes, out_planes, kernel_size=1, stride=stride, bias=bias)  # noqa
 
 
 class BasicBlock(nn.Module):
@@ -31,11 +31,11 @@ class BasicBlock(nn.Module):
     def __init__(self, inplanes, planes, stride=1, downsample=None,
                  norm_type='Unknown'):
         super(BasicBlock, self).__init__()
-        self.conv1 = conv3x3(inplanes, planes, stride)
-        self.norm1 = get_norm(norm_type, planes)
+        self.conv1 = conv3x3(inplanes, planes, stride, True)
+        # self.norm1 = get_norm(norm_type, planes)
         self.relu = nn.ReLU(inplace=True)
-        self.conv2 = conv3x3(planes, planes)
-        self.norm2 = get_norm(norm_type, planes)
+        self.conv2 = conv3x3(planes, planes, 1, True)
+        # self.norm2 = get_norm(norm_type, planes)
         self.downsample = downsample
         self.stride = stride
 
@@ -43,11 +43,11 @@ class BasicBlock(nn.Module):
         identity = x
 
         out = self.conv1(x)
-        out = self.norm1(out)
+        # out = self.norm1(out)
         out = self.relu(out)
 
         out = self.conv2(out)
-        out = self.norm2(out)
+        # out = self.norm2(out)
 
         if self.downsample is not None:
             identity = self.downsample(x)
@@ -103,8 +103,8 @@ class ResNetFPN(nn.Module):
         super(ResNetFPN, self).__init__()
         self.inplanes = 64
         self.conv1 = nn.Conv2d(3, 64, kernel_size=7, stride=2, padding=3,
-                               bias=False)
-        self.norm1 = get_norm(norm_type, 64)
+                               bias=True)
+        # self.norm1 = get_norm(norm_type, 64)
         self.relu = nn.ReLU(inplace=True)
         self.maxpool = nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
         self.layer1 = self._make_layer(block, 64, layers[0],
@@ -118,8 +118,7 @@ class ResNetFPN(nn.Module):
         self.layer5 = self._make_layer(block, 512, layers[4], stride=2,
                                        norm_type=norm_type)
 
-        self.up2 = nn.Upsample(scale_factor=2, mode='bilinear',
-                               align_corners=False)
+        self.up2 = nn.ConvTranspose2d(512, 512, 2, stride=2, padding=0, bias=False)
 
         self.merge1 = conv3x3(512, 512)
 
@@ -155,8 +154,8 @@ class ResNetFPN(nn.Module):
         downsample = None
         if stride != 1 or self.inplanes != planes * block.expansion:
             downsample = nn.Sequential(
-                conv1x1(self.inplanes, planes * block.expansion, stride),
-                get_norm(norm_type, planes * block.expansion),
+                conv1x1(self.inplanes, planes * block.expansion, stride, True),
+                # get_norm(norm_type, planes * block.expansion),
             )
 
         layers = []
@@ -170,7 +169,7 @@ class ResNetFPN(nn.Module):
 
     def forward(self, x):
         x = self.conv1(x)
-        x = self.norm1(x)
+        # x = self.norm1(x)
         x = self.relu(x)
         x = self.maxpool(x)
 
