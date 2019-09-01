@@ -16,15 +16,15 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)) + '/../')
 
 import caffe  # noqa
 from converter.pytorch.pytorch_parser import PytorchParser  # noqa
-from ssd import *
+from models import PNet
 
-model_file = "pytorch_model/best.pth"
+model_file = "pytorch_model/pnet_epoch_9.pt"
 
 device = torch.device('cpu')  # PyTorch v0.4.0
 
-net = build_ssd('test', size=300, num_classes=21)
+net = PNet()
 
-model_weights = torch.load('pytorch_model/ssd_300_VOC.pth')
+model_weights = torch.load('pytorch_model/pnet_epoch_10.pt')
 
 net.load_state_dict(model_weights)
 
@@ -39,16 +39,16 @@ net.eval()
 
 # net.backbone.norm1.register_forward_hook(hook)
 
-dummy_input = torch.ones([1, 3, 300, 300])
+dummy_input = torch.ones([1, 3, 48, 48])
 
 net.to(device)
 output = net(dummy_input)
 
 # print(hook_result)
 
-summary(net, (3, 300, 300), device='cpu')
+summary(net, (3, 48, 48), device='cpu')
 
-pytorch_parser = PytorchParser(model_file, [3, 300, 300])
+pytorch_parser = PytorchParser(model_file, [3, 48, 48])
 #
 pytorch_parser.run(model_file)
 
@@ -60,7 +60,7 @@ net = caffe.Classifier(Model_FILE, PRETRAINED)
 
 caffe.set_mode_cpu()
 
-img = np.ones((3, 300, 300))
+img = np.ones((3, 24, 24))
 
 input_data = net.blobs["data"].data[...]
 
